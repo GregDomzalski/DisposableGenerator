@@ -82,7 +82,7 @@ namespace DisposableGenerator
                 var work = new DisposeWork
                 {
                     ClassName = candidateType.Name,
-                    ContainingNamespace = candidateType.ContainingNamespace.Name,
+                    ContainingNamespace = candidateType.ContainingNamespace.ToString(), // TODO: Is this correct?
                 };
 
                 // Do I have a DisposeManaged member method? Call it.
@@ -100,10 +100,10 @@ namespace DisposableGenerator
                             "DP0001",
                             nameof(DisposeGenerator),
                             $"Class '{work.ClassName}' does not implement a DisposeManaged or DisposeUnmanaged method.",
-                            DiagnosticSeverity.Error,
-                            DiagnosticSeverity.Error,
+                            DiagnosticSeverity.Warning,
+                            DiagnosticSeverity.Warning,
                             true,
-                            0,
+                            3,
                             location: candidate.GetLocation()));
                 }
                 workToDo.Add(work);
