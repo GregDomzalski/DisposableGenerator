@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Text;
+using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -24,8 +24,8 @@ namespace DisposableGenerator
     {
         private struct DisposeWork
         {
-            public string ContainingNamespace;
-            public string ClassName;
+            public ITypeSymbol Symbol;
+            public IEnumerable<ITypeSymbol> DisposableMembers;
             public bool ImplementManaged;
             public bool ImplementUnmanaged;
         }
@@ -40,8 +40,9 @@ namespace DisposableGenerator
             // Let's get generating!
             foreach (DisposeWork work in workToDo)
             {
-                string hintName = $"{work.ContainingNamespace}.{work.ClassName}.Dispose.cs"; 
-                string sourceText = Emit(work);
+                // TODO: Move this and context.AddSource inside of EmitSource?
+                string hintName = $"{work.Symbol.ContainingNamespace}.{work.Symbol.Name}.Dispose.cs"; 
+                string sourceText = EmitSource(context, work);
 
                 context.AddSource(hintName, sourceText);
             }
@@ -51,8 +52,6 @@ namespace DisposableGenerator
         {
             context.RegisterForSyntaxNotifications(() => new DisposeSyntaxReceiver());
         }
-
-        #region Determine work
 
         private static List<DisposeWork> DetermineWork(GeneratorExecutionContext context, DisposeSyntaxReceiver receiver)
         {
@@ -81,31 +80,30 @@ namespace DisposableGenerator
 
                 var work = new DisposeWork
                 {
-                    ClassName = candidateType.Name,
-                    ContainingNamespace = candidateType.ContainingNamespace.ToString(), // TODO: Is this correct?
+                    Symbol = candidateType,
+
+                    DisposableMembers = GetDisposableMembers(context, candidateType),
+
+                    // Do I have a DisposeManaged member method? Call it.
+                    ImplementManaged = ContainsCustomDisposer(candidateType, "DisposeManaged"),
+
+                    // Do I have a DisposeUnmanaged member method? Call it.
+                    ImplementUnmanaged = ContainsCustomDisposer(candidateType, "DisposeUnmanaged"),
                 };
 
-                // Do I have a DisposeManaged member method? Call it.
-                if (ContainsCustomDisposer(candidateType, "DisposeManaged"))
-                    work.ImplementManaged = true;
-
-                // Do I have a DisposeUnmanaged member method? Call it.
-                if (ContainsCustomDisposer(candidateType, "DisposeUnmanaged"))
-                    work.ImplementUnmanaged = true;
-
-                if (work.ImplementUnmanaged == false && work.ImplementManaged == false)
-                {
-                    context.ReportDiagnostic(
-                        Diagnostic.Create(
-                            "DP0001",
-                            nameof(DisposeGenerator),
-                            $"Class '{work.ClassName}' does not implement a DisposeManaged or DisposeUnmanaged method.",
-                            DiagnosticSeverity.Warning,
-                            DiagnosticSeverity.Warning,
-                            true,
-                            3,
-                            location: candidate.GetLocation()));
-                }
+                //if (work.ImplementUnmanaged == false && work.ImplementManaged == false)
+                //{
+                //    context.ReportDiagnostic(
+                //        Diagnostic.Create(
+                //            "DP0001",
+                //            nameof(DisposeGenerator),
+                //            $"Class '{candidateType.Name}' does not implement a DisposeManaged or DisposeUnmanaged method.",
+                //            DiagnosticSeverity.Warning,
+                //            DiagnosticSeverity.Warning,
+                //            true,
+                //            3,
+                //            location: candidate.GetLocation()));
+                //}
                 workToDo.Add(work);
             }
 
@@ -156,32 +154,15 @@ namespace DisposableGenerator
             return false;
         }
 
-        #endregion
-
-        #region Emit code
-
-        private static string Emit(DisposeWork work)
+        private static IEnumerable<ITypeSymbol> GetDisposableMembers(GeneratorExecutionContext context, ITypeSymbol symbol)
         {
-            StringBuilder sb = new StringBuilder();
+            var disposeInterfaceSymbol = context.Compilation.GetTypeByMetadataName("System.IDisposable");
+            if (disposeInterfaceSymbol is null)
+                return Enumerable.Empty<ITypeSymbol>();
 
-            sb.Append(DisposeGenerator.EmitHeader(work.ContainingNamespace, work.ClassName));
-
-            if (work.ImplementManaged == false && work.ImplementUnmanaged == false)
-            {
-                sb.Append(DisposeGenerator.EmitDisposeStub());
-            }
-            else
-            {
-                sb.Append(DisposeGenerator.EmitDisposeImpl(work));
-            }
-
-            sb.Append(DisposeGenerator.EmitFooter());
-
-            return sb.ToString();
+            return symbol.GetMembers()
+                .OfType<ITypeSymbol>()
+                .Where(m => m.AllInterfaces.Contains(disposeInterfaceSymbol));
         }
-
-        #endregion
     }
-
-
 }

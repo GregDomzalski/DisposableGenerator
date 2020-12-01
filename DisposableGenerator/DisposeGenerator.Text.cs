@@ -1,109 +1,140 @@
 ﻿using System.Text;
+using Microsoft.CodeAnalysis;
 
 namespace DisposableGenerator
 {
     public partial class DisposeGenerator
     {
-        private static string EmitDisposeImpl(DisposeWork work)
+        private const string Indent = "    ";
+
+        private static string EmitSource(GeneratorExecutionContext context, DisposeWork work)
         {
             StringBuilder sb = new StringBuilder();
+            const string indentLevel = Indent;
 
-            if (work.ImplementUnmanaged) sb.Append(EmitFinalizer(work.ClassName));
+            sb.AppendLine($"using System;");
+            sb.AppendLine();
+            sb.AppendLine($"namespace {work.Symbol.ContainingNamespace}");
+            sb.AppendLine($"{{");
 
-            sb.Append(EmitDisposeBegin());
+            EmitClass(context, work, sb, indentLevel + Indent);
 
-            if (work.ImplementManaged) sb.Append(EmitManagedCall());
-            if (work.ImplementUnmanaged) sb.Append(EmitUnmanagedCall());
-
-            sb.Append(EmitDisposeEnd());
+            sb.AppendLine($"}}");
 
             return sb.ToString();
         }
 
-        //
-        // using System;
-        // namespace {namespaceName}
-        // public partial class {ClassName}
-        //
-        public static string EmitHeader(string namespaceName, string className) =>
-            $@"
-using System;
-
-namespace {namespaceName}
-{{
-    public partial class {className}
-    {{
-";
-
-        //
-        // close class
-        // close namespace
-        //
-        private static string EmitFooter() =>
-            @"
-    }
-}
-";
-
-        //
-        // public void Dispose()
-        //
-        private static string EmitDisposeStub() =>
-            @"
-        public void Dispose()
+        private static void EmitClass(
+            GeneratorExecutionContext context,
+            DisposeWork work,
+            StringBuilder sb,
+            string indentLevel
+        )
         {
-            // Nothing to dispose. Implement a DisposeManaged and/or DisposeUnmanaged method.
-        }
-";
+            sb.AppendLine($"{indentLevel}{work.Symbol.DeclaredAccessibility} partial class {work.Symbol.Name}");
+            sb.AppendLine($"{indentLevel}{{");
+            sb.AppendLine($"{indentLevel}{Indent}private bool _isDisposed = false");
 
-        //
-        // ~{ClassName}
-        //
-        private static string EmitFinalizer(string className) =>
-            $@"
-        ~{className}() => Dispose(false);
-";
+            EmitPublicDispose(context, work, sb, indentLevel + Indent);
 
-        //
-        // private bool _disposed
-        // public void Dispose()
-        // private void Dispose(bool)
-        //
-        private static string EmitDisposeBegin() =>
-            @"
-        private bool _disposed = false;
+            EmitPrivateDispose(context, work, sb, indentLevel + Indent);
 
-        public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-        private void Dispose(bool disposing)
-        {
-            if (_disposed)
+            if (work.ImplementUnmanaged)
             {
-                return;
+                EmitFinalizer(context, work, sb, indentLevel + Indent);
             }
-";
 
-        private static string EmitManagedCall() => @"
-            if (disposing)
-            {
-                DisposeManaged();
-            }
-";
-
-        private static string EmitUnmanagedCall() => @"
-            DisposeUnmanaged();
-";
-
-        //
-        // close Dispose()
-        //
-        private static string EmitDisposeEnd() => @"
-            _disposed = true;
+            sb.AppendLine($"{indentLevel}}}");
         }
-";
+
+        private static void EmitPublicDispose(
+            GeneratorExecutionContext context,
+            DisposeWork work,
+            StringBuilder sb,
+            string indentLevel)
+        {
+            sb.AppendLine($"{indentLevel}public void Dispose()");
+            sb.AppendLine($"{indentLevel}{{");
+
+            EmitPublicDisposeImpl(context, work, sb, indentLevel + Indent);
+
+            sb.AppendLine($"{indentLevel}}}");
+        }
+
+        private static void EmitPublicDisposeImpl(
+            GeneratorExecutionContext context,
+            DisposeWork work,
+            StringBuilder sb,
+            string indentLevel)
+        {
+            sb.AppendLine($"{indentLevel}Dispose(true);");
+            sb.AppendLine($"{indentLevel}GC.SuppressFinalize(this);");
+        }
+
+        private static void EmitPrivateDispose(
+            GeneratorExecutionContext context,
+            DisposeWork work,
+            StringBuilder sb,
+            string indentLevel)
+        {
+            sb.AppendLine($"{indentLevel}private void Dispose(bool isDisposing)");
+            sb.AppendLine($"{indentLevel}{{");
+
+            EmitPrivateDisposeImpl(context, work, sb, indentLevel);
+
+            sb.AppendLine($"{indentLevel}}}");
+        }
+
+        private static void EmitPrivateDisposeImpl(
+            GeneratorExecutionContext context,
+            DisposeWork work,
+            StringBuilder sb,
+            string indentLevel)
+        {
+            sb.AppendLine($"{indentLevel}if (_isDisposed)");
+            sb.AppendLine($"{indentLevel}{{");
+            sb.AppendLine($"{indentLevel}{Indent}return;");
+            sb.AppendLine($"{indentLevel}}}");
+
+            sb.AppendLine();
+
+            sb.AppendLine($"{indentLevel}if (disposing)");
+            sb.AppendLine($"{indentLevel}{{");
+
+            if (work.ImplementManaged)
+            {
+                sb.AppendLine($"{indentLevel}{Indent}DisposeManaged();");
+            }
+            else
+            {
+                // Dispose each disposable
+                foreach (var memberToDispose in work.DisposableMembers)
+                {
+                    sb.AppendLine($"{indentLevel}{Indent}{memberToDispose.Name}.Dispose();");
+                }
+            }
+
+            sb.AppendLine($"{indentLevel}}}");
+
+            sb.AppendLine();
+
+            if (work.ImplementUnmanaged)
+            {
+                sb.AppendLine($"{indentLevel}DisposeUnmanaged();");
+            }
+
+            sb.AppendLine();
+
+            sb.AppendLine($"{indentLevel}_isDisposed = true;");
+        }
+
+        private static void EmitFinalizer(
+            GeneratorExecutionContext context,
+            DisposeWork work,
+            StringBuilder sb,
+            string indentLevel)
+        {
+            sb.AppendLine($"{indentLevel}~{work.Symbol.Name}() => Dispose(false);");
+        }
     }
 }
