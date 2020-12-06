@@ -19,17 +19,31 @@ namespace DisposableGenerator
     // - Are DisposeManaged/DisposeUnmanaged parameter-less and void?
     // - Are other Dispose objects disposed in DisposeManaged?
 
-    [Generator]
-    public partial class DisposeGenerator : ISourceGenerator
+    public class DisposeWork
     {
-        private struct DisposeWork
-        {
-            public ITypeSymbol Symbol;
-            public IEnumerable<ITypeSymbol> DisposableMembers;
-            public bool ImplementManaged;
-            public bool ImplementUnmanaged;
-        }
+        public string NamespaceName;
+        public string ClassName;
+        public string DeclaredAccessibility;
 
+        public IEnumerable<string> DisposableMemberNames;
+
+        public bool ImplementManaged;
+        public bool ImplementUnmanaged;
+
+        public bool HasWork => ImplementUnmanaged || ImplementManaged || DisposableMemberNames.Any();
+
+        public DisposeWork()
+        {
+            NamespaceName = string.Empty;
+            ClassName = string.Empty;
+            DeclaredAccessibility = string.Empty;
+            DisposableMemberNames = Enumerable.Empty<string>();
+        }
+    }
+
+    [Generator]
+    public class DisposeGenerator : ISourceGenerator
+    {
         public void Execute(GeneratorExecutionContext context)
         {
             if (!(context.SyntaxReceiver is DisposeSyntaxReceiver receiver))
@@ -40,9 +54,11 @@ namespace DisposableGenerator
             // Let's get generating!
             foreach (DisposeWork work in workToDo)
             {
+                var disposeWriter = new DisposeWriter(work);
+
                 // TODO: Move this and context.AddSource inside of EmitSource?
-                string hintName = $"{work.Symbol.ContainingNamespace}.{work.Symbol.Name}.Dispose.cs"; 
-                string sourceText = EmitSource(context, work);
+                string hintName = $"{work.NamespaceName}.{work.ClassName}.Dispose.cs"; 
+                string sourceText = disposeWriter.Emit();
 
                 context.AddSource(hintName, sourceText);
             }
@@ -80,9 +96,11 @@ namespace DisposableGenerator
 
                 var work = new DisposeWork
                 {
-                    Symbol = candidateType,
+                    NamespaceName = candidateType.ContainingNamespace.ToString(),
+                    ClassName = candidateType.Name,
+                    DeclaredAccessibility = candidateType.DeclaredAccessibility.ToString(),
 
-                    DisposableMembers = GetDisposableMembers(context, candidateType),
+                    DisposableMemberNames = GetDisposableMembers(context, candidateType),
 
                     // Do I have a DisposeManaged member method? Call it.
                     ImplementManaged = ContainsCustomDisposer(candidateType, "DisposeManaged"),
@@ -154,15 +172,16 @@ namespace DisposableGenerator
             return false;
         }
 
-        private static IEnumerable<ITypeSymbol> GetDisposableMembers(GeneratorExecutionContext context, ITypeSymbol symbol)
+        private static IEnumerable<string> GetDisposableMembers(GeneratorExecutionContext context, ITypeSymbol symbol)
         {
             var disposeInterfaceSymbol = context.Compilation.GetTypeByMetadataName("System.IDisposable");
             if (disposeInterfaceSymbol is null)
-                return Enumerable.Empty<ITypeSymbol>();
+                return Enumerable.Empty<string>();
 
             return symbol.GetMembers()
                 .OfType<ITypeSymbol>()
-                .Where(m => m.AllInterfaces.Contains(disposeInterfaceSymbol));
+                .Where(m => m.AllInterfaces.Contains(disposeInterfaceSymbol))
+                .Select(m => m.Name);
         }
     }
 }

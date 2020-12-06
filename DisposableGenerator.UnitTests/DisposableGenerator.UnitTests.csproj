@@ -21,9 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-      <ProjectReference Include="..\DisposableGenerator\DisposableGenerator.csproj"
-                        ReferenceOutputAssembly="false"
-                        OutputItemType="Analyzer" />
+      <ProjectReference Include="..\DisposableGenerator\DisposableGenerator.csproj" />
   </ItemGroup>
 
 </Project>

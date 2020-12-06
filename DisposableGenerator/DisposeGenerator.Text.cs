@@ -1,23 +1,29 @@
 ﻿using System.Text;
-using Microsoft.CodeAnalysis;
 
 namespace DisposableGenerator
 {
-    public partial class DisposeGenerator
+    public class DisposeWriter
     {
         private const string Indent = "    ";
+        private readonly DisposeWork _work;
 
-        private static string EmitSource(GeneratorExecutionContext context, DisposeWork work)
+        public DisposeWriter(DisposeWork work)
+        {
+            _work = work;
+        }
+
+        public string Emit() => EmitSource(_work);
+
+        private static string EmitSource(DisposeWork work)
         {
             StringBuilder sb = new StringBuilder();
-            const string indentLevel = Indent;
 
             sb.AppendLine($"using System;");
             sb.AppendLine();
-            sb.AppendLine($"namespace {work.Symbol.ContainingNamespace}");
+            sb.AppendLine($"namespace {work.NamespaceName}");
             sb.AppendLine($"{{");
 
-            EmitClass(context, work, sb, indentLevel + Indent);
+            EmitClass(work, sb, Indent);
 
             sb.AppendLine($"}}");
 
@@ -25,30 +31,40 @@ namespace DisposableGenerator
         }
 
         private static void EmitClass(
-            GeneratorExecutionContext context,
             DisposeWork work,
             StringBuilder sb,
-            string indentLevel
-        )
+            string indentLevel)
         {
-            sb.AppendLine($"{indentLevel}{work.Symbol.DeclaredAccessibility} partial class {work.Symbol.Name}");
+            var declaredAccessibility = work.DeclaredAccessibility;
+            declaredAccessibility += work.DeclaredAccessibility.Length > 0 ? " " : "";
+
+            sb.AppendLine($"{indentLevel}{declaredAccessibility}partial class {work.ClassName}");
             sb.AppendLine($"{indentLevel}{{");
-            sb.AppendLine($"{indentLevel}{Indent}private bool _isDisposed = false");
 
-            EmitPublicDispose(context, work, sb, indentLevel + Indent);
+            if (work.HasWork)
+            {
+                sb.AppendLine($"{indentLevel}{Indent}private bool _isDisposed = false;");
+                sb.AppendLine();
+            }
 
-            EmitPrivateDispose(context, work, sb, indentLevel + Indent);
+            EmitPublicDispose(work, sb, indentLevel + Indent);
+
+            if (work.HasWork)
+            {
+                sb.AppendLine();
+                EmitPrivateDispose(work, sb, indentLevel + Indent);
+            }
 
             if (work.ImplementUnmanaged)
             {
-                EmitFinalizer(context, work, sb, indentLevel + Indent);
+                sb.AppendLine();
+                EmitFinalizer(work, sb, indentLevel + Indent);
             }
 
             sb.AppendLine($"{indentLevel}}}");
         }
 
         private static void EmitPublicDispose(
-            GeneratorExecutionContext context,
             DisposeWork work,
             StringBuilder sb,
             string indentLevel)
@@ -56,13 +72,15 @@ namespace DisposableGenerator
             sb.AppendLine($"{indentLevel}public void Dispose()");
             sb.AppendLine($"{indentLevel}{{");
 
-            EmitPublicDisposeImpl(context, work, sb, indentLevel + Indent);
+            if (work.HasWork)
+            {
+                EmitPublicDisposeImpl(work, sb, indentLevel + Indent);
+            }
 
             sb.AppendLine($"{indentLevel}}}");
         }
 
         private static void EmitPublicDisposeImpl(
-            GeneratorExecutionContext context,
             DisposeWork work,
             StringBuilder sb,
             string indentLevel)
@@ -72,7 +90,6 @@ namespace DisposableGenerator
         }
 
         private static void EmitPrivateDispose(
-            GeneratorExecutionContext context,
             DisposeWork work,
             StringBuilder sb,
             string indentLevel)
@@ -80,13 +97,12 @@ namespace DisposableGenerator
             sb.AppendLine($"{indentLevel}private void Dispose(bool isDisposing)");
             sb.AppendLine($"{indentLevel}{{");
 
-            EmitPrivateDisposeImpl(context, work, sb, indentLevel);
+            EmitPrivateDisposeImpl(work, sb, indentLevel + Indent);
 
             sb.AppendLine($"{indentLevel}}}");
         }
 
         private static void EmitPrivateDisposeImpl(
-            GeneratorExecutionContext context,
             DisposeWork work,
             StringBuilder sb,
             string indentLevel)
@@ -108,33 +124,30 @@ namespace DisposableGenerator
             else
             {
                 // Dispose each disposable
-                foreach (var memberToDispose in work.DisposableMembers)
+                foreach (var memberToDispose in work.DisposableMemberNames)
                 {
-                    sb.AppendLine($"{indentLevel}{Indent}{memberToDispose.Name}.Dispose();");
+                    sb.AppendLine($"{indentLevel}{Indent}{memberToDispose}.Dispose();");
                 }
             }
 
             sb.AppendLine($"{indentLevel}}}");
-
             sb.AppendLine();
 
             if (work.ImplementUnmanaged)
             {
                 sb.AppendLine($"{indentLevel}DisposeUnmanaged();");
+                sb.AppendLine();
             }
-
-            sb.AppendLine();
 
             sb.AppendLine($"{indentLevel}_isDisposed = true;");
         }
 
         private static void EmitFinalizer(
-            GeneratorExecutionContext context,
             DisposeWork work,
             StringBuilder sb,
             string indentLevel)
         {
-            sb.AppendLine($"{indentLevel}~{work.Symbol.Name}() => Dispose(false);");
+            sb.AppendLine($"{indentLevel}~{work.ClassName}() => Dispose(false);");
         }
     }
 }
