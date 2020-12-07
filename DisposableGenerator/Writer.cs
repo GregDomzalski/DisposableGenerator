@@ -12,6 +12,8 @@ namespace DisposableGenerator
             _work = work;
         }
 
+        public string SuggestFileName() => $"{_work.NamespaceName}.{_work.ClassName}.Dispose.cs";
+
         public string Emit() => EmitSource(_work);
 
         private static string EmitSource(DisposeWork work)

@@ -1,6 +1,4 @@
 ﻿using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -22,26 +20,52 @@ namespace DisposableGenerator
     [Generator]
     public class Generator : ISourceGenerator
     {
+        /// <summary>
+        /// Runs the IDisposable Generator against the current context.
+        /// Note that the generator is only called once per compilation,
+        /// so we will likely be processing many classes.
+        /// </summary>
+        /// <param name="context">
+        /// The <see cref="GeneratorExecutionContext"/> which contains,
+        /// among other things, the <see cref="SyntaxReceiver"/> that
+        /// should contain all of the candidate symbols that the generator
+        /// shall run against.
+        /// </param>
         public void Execute(GeneratorExecutionContext context)
         {
+            // Sanity check: We should only ever be working with one type
+            // of syntax receiver.
             if (!(context.SyntaxReceiver is SyntaxReceiver receiver))
                 return;
 
+            // Do a pass over the current execution context given the
+            // candidate symbols found by the syntax receiver.
             var workToDo = DetermineWork(context, receiver);
 
-            // Let's get generating!
+            // For each piece of work that has been found to do, emit the
+            // generated source code and add it to the compilation.
             foreach (DisposeWork work in workToDo)
             {
                 var disposeWriter = new Writer(work);
 
-                // TODO: Move this and context.AddSource inside of EmitSource?
-                string hintName = $"{work.NamespaceName}.{work.ClassName}.Dispose.cs"; 
+                string hintName = disposeWriter.SuggestFileName();
                 string sourceText = disposeWriter.Emit();
 
                 context.AddSource(hintName, sourceText);
             }
         }
 
+        /// <summary>
+        /// Initializes the generator into a given context. This is mainly
+        /// used to register a syntax receiver that can be used to quickly
+        /// determine whether this generator should participate in the
+        /// current compilation or not.
+        /// </summary>
+        /// <param name="context">
+        /// The <see cref="GeneratorInitializationContext"/> given to us by
+        /// the Roslyn Compiler. This context allows us to register our
+        /// syntax receiver with the compiler.
+        /// </param>
         public void Initialize(GeneratorInitializationContext context)
         {
             context.RegisterForSyntaxNotifications(() => new SyntaxReceiver());
@@ -54,7 +78,7 @@ namespace DisposableGenerator
                 return new List<DisposeWork>();
 
             // Determine the real amount of work to do
-            List<DisposeWork> workToDo = new List<DisposeWork>();
+            var workToDo = new List<DisposeWork>();
             foreach (ClassDeclarationSyntax candidate in receiver.CandidateClasses)
             {
                 SemanticModel model = context.Compilation.GetSemanticModel(candidate.SyntaxTree);
@@ -62,31 +86,18 @@ namespace DisposableGenerator
 
                 if (candidateType is null) continue;
 
-                // Do I inherit from IDisposable?
-                if (!candidateType.AllInterfaces.Contains(disposeInterfaceSymbol)) continue;
+                if (!candidateType.InheritsFromSymbol(disposeInterfaceSymbol)) continue;
 
                 // Do I already have a public void Dispose()?
-                if (ContainsPublicDispose(candidateType, out var disposeMethodSymbol))
+                if (candidateType.ContainsPublicDisposeMember(out var disposeMethodSymbol))
                 {
                     // TODO: Handle base classes eventually...
                     continue;
                 }
 
-                var work = new DisposeWork
-                {
-                    NamespaceName = candidateType.ContainingNamespace.ToString(),
-                    ClassName = candidateType.Name,
-                    DeclaredAccessibility = candidateType.DeclaredAccessibility.ToString(),
+                var disposableMembers = candidateType.GetMembersThatInheritFrom(disposeInterfaceSymbol);
 
-                    DisposableMemberNames = GetDisposableMembers(context, candidateType),
-
-                    // Do I have a DisposeManaged member method? Call it.
-                    ImplementManaged = ContainsCustomDisposer(candidateType, "DisposeManaged"),
-
-                    // Do I have a DisposeUnmanaged member method? Call it.
-                    ImplementUnmanaged = ContainsCustomDisposer(candidateType, "DisposeUnmanaged"),
-                };
-
+                AddWorkToQueue(candidateType, disposableMembers, workToDo);
                 //if (work.ImplementUnmanaged == false && work.ImplementManaged == false)
                 //{
                 //    context.ReportDiagnostic(
@@ -100,66 +111,35 @@ namespace DisposableGenerator
                 //            3,
                 //            location: candidate.GetLocation()));
                 //}
-                workToDo.Add(work);
             }
 
             return workToDo;
         }
 
-        private static bool ContainsPublicDispose(
-            ITypeSymbol classSymbol,
-            [NotNullWhen(true)]
-            out IMethodSymbol? methodSymbol)
+        private static void AddWorkToQueue(
+            ITypeSymbol candidateType,
+            IEnumerable<string> disposableMembers,
+            ICollection<DisposeWork> workToDo)
         {
-            foreach (var member in classSymbol.GetMembers())
+            var work = new DisposeWork
             {
-                // We're looking for "void Dispose()"
-                if (member is IMethodSymbol
-                    {
-                    ReturnsVoid: true,
-                    Name: "Dispose",
-                    Parameters: { Length: 0 }
-                    } methodCandidate)
-                {
-                    methodSymbol = methodCandidate;
-                    return true;
-                }
-            }
+                NamespaceName = candidateType.ContainingNamespace.ToString(),
+                ClassName = candidateType.Name,
+                DeclaredAccessibility = candidateType.DeclaredAccessibility.ToString(),
 
-            methodSymbol = null;
-            return false;
+                DisposableMemberNames = disposableMembers,
+
+                // Do I have a DisposeManaged member method? Call it.
+                ImplementManaged = candidateType.ContainsCustomDisposer("DisposeManaged"),
+
+                // Do I have a DisposeUnmanaged member method? Call it.
+                ImplementUnmanaged = candidateType.ContainsCustomDisposer("DisposeUnmanaged"),
+            };
+
+            workToDo.Add(work);
         }
 
-        private static bool ContainsCustomDisposer(ITypeSymbol classSymbol, string name)
-        {
-            foreach (var member in classSymbol.GetMembers())
-            {
-                if (member is IMethodSymbol
-                    {
-                    ReturnsVoid: true,
-                    Parameters: { Length: 0 }
-                    } methodCandidate)
-                {
-                    if (methodCandidate.Name == name)
-                    {
-                        return true;
-                    }
-                }
-            }
 
-            return false;
-        }
 
-        private static IEnumerable<string> GetDisposableMembers(GeneratorExecutionContext context, ITypeSymbol symbol)
-        {
-            var disposeInterfaceSymbol = context.Compilation.GetTypeByMetadataName("System.IDisposable");
-            if (disposeInterfaceSymbol is null)
-                return Enumerable.Empty<string>();
-
-            return symbol.GetMembers()
-                .OfType<ITypeSymbol>()
-                .Where(m => m.AllInterfaces.Contains(disposeInterfaceSymbol))
-                .Select(m => m.Name);
-        }
     }
 }
