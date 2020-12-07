@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -11,18 +12,15 @@ namespace DisposableGenerator
 
         public void OnVisitSyntaxNode(SyntaxNode syntaxNode)
         {
-            if (syntaxNode is ClassDeclarationSyntax
-                {
-                    BaseList:
-                    {
-                        Types:
-                        {
-                            Count: >= 1
-                        }
-                    }
-                } classDeclarationSyntax)
+            if (syntaxNode is ClassDeclarationSyntax classDeclarationSyntax &&
+                classDeclarationSyntax.BaseList is { } baseList)
             {
-                CandidateClasses.Add(classDeclarationSyntax);
+                if (baseList.Types
+                    .Select(t => t.ToString())
+                    .Any(s => s == "IDisposable" || s == "System.IDisposable"))
+                {
+                    CandidateClasses.Add(classDeclarationSyntax);
+                }
             }
         }
     }
