@@ -2,12 +2,12 @@
 
 namespace DisposableGenerator
 {
-    public class DisposeWriter
+    public class Writer
     {
         private const string Indent = "    ";
         private readonly DisposeWork _work;
 
-        public DisposeWriter(DisposeWork work)
+        public Writer(DisposeWork work)
         {
             _work = work;
         }

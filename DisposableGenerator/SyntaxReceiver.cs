@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace DisposableGenerator
 {
     // Quickly reduce the number of interesting types and syntax trees to look at.
-    public class DisposeSyntaxReceiver : ISyntaxReceiver
+    public class SyntaxReceiver : ISyntaxReceiver
     {
         public List<ClassDeclarationSyntax> CandidateClasses { get; } = new List<ClassDeclarationSyntax>();
 

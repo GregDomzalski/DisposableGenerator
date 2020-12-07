@@ -19,34 +19,12 @@ namespace DisposableGenerator
     // - Are DisposeManaged/DisposeUnmanaged parameter-less and void?
     // - Are other Dispose objects disposed in DisposeManaged?
 
-    public class DisposeWork
-    {
-        public string NamespaceName;
-        public string ClassName;
-        public string DeclaredAccessibility;
-
-        public IEnumerable<string> DisposableMemberNames;
-
-        public bool ImplementManaged;
-        public bool ImplementUnmanaged;
-
-        public bool HasWork => ImplementUnmanaged || ImplementManaged || DisposableMemberNames.Any();
-
-        public DisposeWork()
-        {
-            NamespaceName = string.Empty;
-            ClassName = string.Empty;
-            DeclaredAccessibility = string.Empty;
-            DisposableMemberNames = Enumerable.Empty<string>();
-        }
-    }
-
     [Generator]
-    public class DisposeGenerator : ISourceGenerator
+    public class Generator : ISourceGenerator
     {
         public void Execute(GeneratorExecutionContext context)
         {
-            if (!(context.SyntaxReceiver is DisposeSyntaxReceiver receiver))
+            if (!(context.SyntaxReceiver is SyntaxReceiver receiver))
                 return;
 
             var workToDo = DetermineWork(context, receiver);
@@ -54,7 +32,7 @@ namespace DisposableGenerator
             // Let's get generating!
             foreach (DisposeWork work in workToDo)
             {
-                var disposeWriter = new DisposeWriter(work);
+                var disposeWriter = new Writer(work);
 
                 // TODO: Move this and context.AddSource inside of EmitSource?
                 string hintName = $"{work.NamespaceName}.{work.ClassName}.Dispose.cs"; 
@@ -66,10 +44,10 @@ namespace DisposableGenerator
 
         public void Initialize(GeneratorInitializationContext context)
         {
-            context.RegisterForSyntaxNotifications(() => new DisposeSyntaxReceiver());
+            context.RegisterForSyntaxNotifications(() => new SyntaxReceiver());
         }
 
-        private static List<DisposeWork> DetermineWork(GeneratorExecutionContext context, DisposeSyntaxReceiver receiver)
+        private static List<DisposeWork> DetermineWork(GeneratorExecutionContext context, SyntaxReceiver receiver)
         {
             var disposeInterfaceSymbol = context.Compilation.GetTypeByMetadataName("System.IDisposable");
             if (disposeInterfaceSymbol is null)
@@ -114,7 +92,7 @@ namespace DisposableGenerator
                 //    context.ReportDiagnostic(
                 //        Diagnostic.Create(
                 //            "DP0001",
-                //            nameof(DisposeGenerator),
+                //            nameof(Generator),
                 //            $"Class '{candidateType.Name}' does not implement a DisposeManaged or DisposeUnmanaged method.",
                 //            DiagnosticSeverity.Warning,
                 //            DiagnosticSeverity.Warning,

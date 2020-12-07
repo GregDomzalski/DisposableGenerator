@@ -2,7 +2,7 @@
 
 namespace DisposableGenerator.UnitTests
 {
-    public class DisposeWriterTests
+    public class WriterTests
     {
         [Fact]
         public void Emit_NoWork_EmitsDisposeStub()
@@ -28,7 +28,7 @@ namespace TestNamespace
                 ClassName = "TestClass"
             };
 
-            var writer = new DisposeWriter(work);
+            var writer = new Writer(work);
 
             // Act
             var actualText = writer.Emit();
@@ -66,7 +66,7 @@ namespace TestNamespace
                 DeclaredAccessibility = declaredAccessibility
             };
 
-            var writer = new DisposeWriter(work);
+            var writer = new Writer(work);
 
             // Act
             var actualText = writer.Emit();
@@ -119,7 +119,7 @@ namespace TestNamespace
                 DisposableMemberNames = new [] { "Member1" }
             };
 
-            var writer = new DisposeWriter(work);
+            var writer = new Writer(work);
 
             // Act
             var actualText = writer.Emit();
@@ -174,7 +174,7 @@ namespace TestNamespace
                 DisposableMemberNames = new[] { "Member1", "Member2", "Member3" }
             };
 
-            var writer = new DisposeWriter(work);
+            var writer = new Writer(work);
 
             // Act
             var actualText = writer.Emit();
@@ -227,7 +227,7 @@ namespace TestNamespace
                 ImplementManaged = true
             };
 
-            var writer = new DisposeWriter(work);
+            var writer = new Writer(work);
 
             // Act
             var actualText = writer.Emit();
@@ -281,7 +281,7 @@ namespace TestNamespace
                 ImplementManaged = true
             };
 
-            var writer = new DisposeWriter(work);
+            var writer = new Writer(work);
 
             // Act
             var actualText = writer.Emit();
@@ -337,7 +337,7 @@ namespace TestNamespace
                 ImplementUnmanaged = true
             };
 
-            var writer = new DisposeWriter(work);
+            var writer = new Writer(work);
 
             // Act
             var actualText = writer.Emit();
@@ -393,7 +393,7 @@ namespace TestNamespace
                 ImplementUnmanaged = true
             };
 
-            var writer = new DisposeWriter(work);
+            var writer = new Writer(work);
 
             // Act
             var actualText = writer.Emit();
@@ -451,7 +451,7 @@ namespace TestNamespace
                 ImplementUnmanaged = true
             };
 
-            var writer = new DisposeWriter(work);
+            var writer = new Writer(work);
 
             // Act
             var actualText = writer.Emit();
@@ -510,7 +510,7 @@ namespace TestNamespace
                 DisposableMemberNames = new [] { "Disposable1", "Disposable2" }
             };
 
-            var writer = new DisposeWriter(work);
+            var writer = new Writer(work);
 
             // Act
             var actualText = writer.Emit();
